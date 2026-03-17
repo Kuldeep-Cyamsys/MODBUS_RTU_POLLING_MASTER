@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSerial Modbus RTU Master (Dual Resize)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .btn-disabled { @apply bg-gray-400 cursor-not-allowed; }
+        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white; }
+        .btn-secondary { @apply bg-gray-600 hover:bg-gray-700 text-white; }
+        .btn-danger { @apply bg-red-600 hover:bg-red-700 text-white; }
+        .btn-success { @apply bg-green-600 hover:bg-green-700 text-white; }
+        .input-field { @apply mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm; }
+        label { @apply block text-sm font-medium text-gray-700; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { bg-gray-100; }
+        ::-webkit-scrollbar-thumb { @apply bg-gray-400 rounded; }
+        ::-webkit-scrollbar-thumb:hover { @apply bg-gray-500; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="px-4 py-5 sm:p-6">
+                <h1 class="text-2xl font-bold text-center text-gray-900 mb-4">
+                    WebSerial Modbus RTU Master
+                </h1>
+                
+                <div id="infoBox" class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 text-blue-700 rounded-md">
+                    <p><strong>Note:</strong> Works in Chrome/Edge. Select <strong>Write</strong> functions to see data input fields.</p>
+                </div>
+
+                <div class="border-b border-gray-200 pb-4 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">1. Connection</h2>
+                    <div class="flex items-center space-x-4 mt-2">
+                        <button id="btnConnect" class="btn-primary px-4 py-2 rounded-md font-medium">Connect</button>
+                        <button id="btnDisconnect" class="btn-danger px-4 py-2 rounded-md font-medium btn-disabled" disabled>Disconnect</button>
+                        <div class="flex items-center space-x-2">
+                            <span id="statusIndicator" class="w-4 h-4 rounded-full bg-red-500"></span>
+                            <span id="statusLabel" class="text-gray-700 font-medium">Not Connected</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-gray-200 pb-4 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">2. Serial Settings</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                        <div><label>Baud Rate</label><select id="baudRate" class="input-field"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></div>
+                        <div><label>Data Bits</label><select id="dataBits" class="input-field"><option>8</option><option>7</option></select></div>
+                        <div><label>Stop Bits</label><select id="stopBits" class="input-field"><option>1</option><option>2</option></select></div>
+                        <div><label>Parity</label><select id="parity" class="input-field"><option value="none">None</option><option value="even">Even</option><option value="odd">Odd</option></select></div>
+                    </div>
+                </div>
+
+                <div class="border-b border-gray-200 pb-4 mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">3. Modbus Request</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                        
+                        <div>
+                            <label>Slave ID</label>
+                            <input type="number" id="slaveId" class="input-field poll-config" value="1" min="1" max="247" disabled>
+                        </div>
+                        <div class="col-span-2">
+                            <label>Function Code</label>
+                            <select id="functionCode" class="input-field poll-config" disabled onchange="toggleWriteInputs()">
+                                <optgroup label="Read">
+                                    <option value="1">01 - Read Coils (Read/Write Bits)</option>
+                                    <option value="2">02 - Read Discrete Inputs (Read-Only Bits)</option>
+                                    <option value="3" selected>03 - Read Holding Registers</option>
+                                    <option value="4">04 - Read Input Registers</option>
+                                </optgroup>
+                                <optgroup label="Write">
+                                    <option value="5">05 - Write Single Coil</option>
+                                    <option value="6">06 - Write Single Register</option>
+                                    <option value="15">15 - Write Multiple Coils</option>
+                                    <option value="16">16 - Write Multiple Registers</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Start Address</label>
+                            <input type="number" id="startRegister" class="input-field poll-config" value="0" min="0" disabled>
+                        </div>
+                    </div>
+
+                    <div id="writeSection" class="mt-4 p-4 bg-yellow-50 rounded-md border border-yellow-200 hidden">
+                        <h3 class="font-medium text-yellow-800 mb-2">Write Data Configuration</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
+                            <div id="inputGroupCoil" class="hidden">
+                                <label>Coil State</label>
+                                <select id="writeCoilValue" class="input-field poll-config">
+                                    <option value="0">OFF (0x0000)</option>
+                                    <option value="65280">ON (0xFF00)</option>
+                                </select>
+                            </div>
+
+                            <div id="inputGroupSingleReg" class="hidden">
+                                <label>Value (0-65535)</label>
+                                <input type="number" id="writeSingleValue" class="input-field poll-config" value="0" min="0" max="65535">
+                            </div>
+
+                             <div id="inputGroupMultiCoil" class="hidden col-span-2">
+                                <label>Coil States (Comma separated 1s and 0s, e.g., 1, 0, 1, 1)</label>
+                                <input type="text" id="writeMultiCoils" class="input-field poll-config" placeholder="1, 0, 1, 0">
+                                <p class="text-xs text-gray-500 mt-1">Bits are automatically packed into bytes. Quantity is calculated from list length.</p>
+                            </div>
+
+                             <div id="inputGroupMultiReg" class="hidden col-span-2">
+                                <label>Values (Comma separated, e.g., 10, 20, 30)</label>
+                                <input type="text" id="writeMultiValues" class="input-field poll-config" placeholder="10, 20, 30">
+                                <p class="text-xs text-gray-500 mt-1">Number of registers is calculated automatically from this list.</p>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div id="readSection" class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                         <div>
+                            <label>Quantity to Read</label>
+                            <input type="number" id="numRegisters" class="input-field poll-config" value="10" min="1" max="125" disabled>
+                         </div>
+                         <div>
+                             <label>Poll Interval (ms)</label>
+                             <input type="number" id="pollDelay" class="input-field poll-config" value="1000" min="100" disabled>
+                         </div>
+                         <div class="flex items-end">
+                             <div class="flex items-center h-10 space-x-2">
+                                 <input type="checkbox" id="continuousPoll" class="h-4 w-4 poll-config" disabled>
+                                 <label for="continuousPoll" class="mb-0">Loop/Auto-Poll</label>
+                             </div>
+                         </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 mt-6">
+                        <button id="btnSend" class="btn-success px-6 py-2 rounded-md font-bold w-full sm:w-auto btn-disabled" disabled>
+                            SEND REQUEST
+                        </button>
+                        <button id="btnStop" class="btn-danger px-6 py-2 rounded-md font-bold w-full sm:w-auto hidden">
+                            STOP POLLING
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 items-start">
+                    
+                    <div class="flex flex-col h-full">
+                        <div class="flex justify-between items-center mb-1">
+                            <h3 class="font-medium text-gray-700">Communication Log</h3>
+                            <button onclick="clearLogs()" class="text-xs text-blue-600 hover:underline">Clear</button>
+                        </div>
+                        <pre id="log" class="h-96 min-h-[16rem] resize-y bg-gray-900 text-green-400 text-xs p-3 rounded-md overflow-auto font-mono shadow-inner"></pre>
+                        <p class="text-xs text-gray-400 mt-1 text-right">Drag corner to resize</p>
+                    </div>
+
+                    <div class="flex flex-col h-full">
+                        <h3 class="font-medium text-gray-700 mb-1">Decoded Response</h3>
+                        <div id="dataDisplay" class="h-96 min-h-[16rem] resize-y bg-gray-50 border border-gray-300 p-4 rounded-md overflow-auto text-sm font-mono shadow-sm">
+                            <p class="text-gray-400 italic">Waiting for response...</p>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1 text-right">Drag corner to resize</p>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h2 class="text-lg font-semibold text-gray-800">5. Export Data</h2>
+                    <div class="flex items-center space-x-4 mt-2">
+                        <div>
+                            <label for="exportType">Export Content:</label>
+                            <select id="exportType" class="input-field w-64">
+                                <option value="full">Full Transaction Log (Raw)</option>
+                                <option value="parsed">Decoded Response Only</option>
+                            </select>
+                        </div>
+                        <button id="btnExport" class="btn-secondary px-4 py-2 rounded-md font-medium self-end">
+                            Download .txt
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let port, reader, writer;
+        let responseBuffer = [];
+        let responseTimeout;
+        let isPolling = false;
+        let pollTimer = null;
+
+        // --- UI Elements ---
+        const ui = {
+            btnConnect: document.getElementById('btnConnect'),
+            btnDisconnect: document.getElementById('btnDisconnect'),
+            btnSend: document.getElementById('btnSend'),
+            btnStop: document.getElementById('btnStop'),
+            btnExport: document.getElementById('btnExport'),
+            exportType: document.getElementById('exportType'),
+            statusInd: document.getElementById('statusIndicator'),
+            statusLbl: document.getElementById('statusLabel'),
+            log: document.getElementById('log'),
+            display: document.getElementById('dataDisplay'),
+            fc: document.getElementById('functionCode'),
+            writeSec: document.getElementById('writeSection'),
+            readSec: document.getElementById('readSection'),
+            inputs: document.querySelectorAll('.poll-config'),
+            continuous: document.getElementById('continuousPoll')
+        };
+
+        // --- Event Listeners ---
+        ui.btnConnect.addEventListener('click', connectToSerial);
+        ui.btnDisconnect.addEventListener('click', disconnectFromSerial);
+        ui.btnSend.addEventListener('click', handleSendClick);
+        ui.btnStop.addEventListener('click', stopPolling);
+        ui.btnExport.addEventListener('click', exportData);
+
+        // --- WebSerial Logic ---
+        async function connectToSerial() {
+            try {
+                port = await navigator.serial.requestPort();
+                const options = {
+                    baudRate: parseInt(document.getElementById('baudRate').value),
+                    dataBits: parseInt(document.getElementById('dataBits').value),
+                    stopBits: parseInt(document.getElementById('stopBits').value),
+                    parity: document.getElementById('parity').value
+                };
+                await port.open(options);
+                
+                writer = port.writable.getWriter();
+                reader = port.readable.getReader();
+                
+                setConnectedState(true);
+                readLoop();
+                log(`Connected: ${options.baudRate} baud`);
+            } catch (err) {
+                log(`Connection Error: ${err.message}`);
+            }
+        }
+
+        async function disconnectFromSerial() {
+            stopPolling();
+            try {
+                if (reader) { await reader.cancel(); await reader.releaseLock(); }
+                if (writer) { await writer.releaseLock(); }
+                if (port) { await port.close(); }
+            } catch(e) { console.error(e); }
+            setConnectedState(false);
+            log("Disconnected.");
+        }
+
+        async function readLoop() {
+            while (port.readable) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) {
+                        responseBuffer.push(...value);
+                        clearTimeout(responseTimeout);
+                        responseTimeout = setTimeout(processResponseFrame, 50); // 50ms silence = end of frame
+                    }
+                } catch (error) { break; }
+            }
+        }
+
+        // --- Modbus Logic ---
+
+        function handleSendClick() {
+            if (ui.continuous.checked && ui.readSec.style.display !== 'none') {
+                startPolling();
+            } else {
+                sendModbusRequest();
+            }
+        }
+
+        function startPolling() {
+            isPolling = true;
+            ui.btnSend.classList.add('hidden');
+            ui.btnStop.classList.remove('hidden');
+            ui.inputs.forEach(i => i.disabled = true);
+            pollLoop();
+        }
+
+        function stopPolling() {
+            isPolling = false;
+            clearTimeout(pollTimer);
+            ui.btnSend.classList.remove('hidden');
+            ui.btnStop.classList.add('hidden');
+            ui.inputs.forEach(i => i.disabled = false);
+        }
+
+        async function pollLoop() {
+            if(!isPolling) return;
+            await sendModbusRequest();
+            const delay = parseInt(document.getElementById('pollDelay').value) || 1000;
+            pollTimer = setTimeout(pollLoop, delay);
+        }
+
+        async function sendModbusRequest() {
+            if (!writer) return;
+
+            const slave = parseInt(document.getElementById('slaveId').value);
+            const fc = parseInt(ui.fc.value);
+            const start = parseInt(document.getElementById('startRegister').value);
+            
+            let pdu = []; // Protocol Data Unit
+
+            try {
+                if (fc === 1 || fc === 2 || fc === 3 || fc === 4) {
+                    // READ FUNCTIONS
+                    const qty = parseInt(document.getElementById('numRegisters').value);
+                    pdu = [slave, fc, start >> 8, start & 0xFF, qty >> 8, qty & 0xFF];
+                } 
+                else if (fc === 5) {
+                    // WRITE SINGLE COIL
+                    const val = parseInt(document.getElementById('writeCoilValue').value);
+                    pdu = [slave, fc, start >> 8, start & 0xFF, val >> 8, val & 0xFF];
+                } 
+                else if (fc === 6) {
+                    // WRITE SINGLE REGISTER
+                    const val = parseInt(document.getElementById('writeSingleValue').value);
+                    pdu = [slave, fc, start >> 8, start & 0xFF, val >> 8, val & 0xFF];
+                }
+                else if (fc === 15) {
+                    // WRITE MULTIPLE COILS
+                    const rawStr = document.getElementById('writeMultiCoils').value;
+                    const values = rawStr.split(',').map(s => parseInt(s.trim()) ? 1 : 0);
+                    
+                    if (values.length === 0) throw new Error("No coil states provided for FC15");
+                    
+                    const quantity = values.length;
+                    const byteCount = Math.ceil(quantity / 8);
+                    
+                    pdu = [
+                        slave, fc, 
+                        start >> 8, start & 0xFF, 
+                        quantity >> 8, quantity & 0xFF, 
+                        byteCount
+                    ];
+                    let currentByte = 0;
+                    for (let i = 0; i < quantity; i++) {
+                        if (values[i]) currentByte |= (1 << (i % 8));
+                        if ((i + 1) % 8 === 0 || i === quantity - 1) {
+                            pdu.push(currentByte);
+                            currentByte = 0;
+                        }
+                    }
+                }
+                else if (fc === 16) {
+                    // WRITE MULTIPLE REGISTERS
+                    const rawStr = document.getElementById('writeMultiValues').value;
+                    const values = rawStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+                    
+                    if (values.length === 0) throw new Error("No values provided for FC16");
+                    
+                    const byteCount = values.length * 2;
+                    pdu = [
+                        slave, fc, 
+                        start >> 8, start & 0xFF, 
+                        values.length >> 8, values.length & 0xFF, 
+                        byteCount
+                    ];
+                    values.forEach(v => {
+                        pdu.push(v >> 8);
+                        pdu.push(v & 0xFF);
+                    });
+                }
+
+                // Add CRC
+                const crc = calculateCRC(pdu);
+                pdu.push(crc & 0xFF);
+                pdu.push(crc >> 8);
+
+                const frame = new Uint8Array(pdu);
+                log(`TX > ${toHex(frame)}`);
+                await writer.write(frame);
+
+            } catch (err) {
+                log(`Error building packet: ${err.message}`);
+                stopPolling();
+            }
+        }
+
+        function processResponseFrame() {
+            if (responseBuffer.length === 0) return;
+            const frame = new Uint8Array(responseBuffer);
+            responseBuffer = []; // Clear
+
+            log(`RX < ${toHex(frame)}`);
+            
+            // Basic CRC Check
+            if (frame.length < 4) return;
+            const calcCrc = calculateCRC(Array.from(frame).slice(0, -2));
+            const crcLo = frame[frame.length-2];
+            const crcHi = frame[frame.length-1];
+            
+            if ( ((calcCrc & 0xFF) !== crcLo) || ((calcCrc >> 8) !== crcHi) ) {
+                ui.display.innerHTML = `<span class="text-red-600">CRC Error</span>`;
+                return;
+            }
+
+            // Parse
+            const slave = frame[0];
+            const fc = frame[1];
+
+            if (fc & 0x80) {
+                const errCode = frame[2];
+                ui.display.innerHTML = `<span class="text-red-600">Exception Code: ${errCode}</span>`;
+                return;
+            }
+
+            let html = `<div class="text-gray-800 mb-2"><b>Slave:</b> ${slave} &nbsp; <b>FC:</b> ${fc}</div>`;
+
+            if (fc === 1 || fc === 2) { // Read Coils
+                const bytes = frame[2];
+                let dataHtml = '<div class="grid grid-cols-8 gap-2">';
+                for (let i = 0; i < bytes; i++) {
+                    let byte = frame[3 + i];
+                    for (let bit = 0; bit < 8; bit++) {
+                        const val = (byte >> bit) & 1;
+                        dataHtml += `<div class="${val ? 'bg-green-100 text-green-800 border-green-200' : 'bg-gray-100 text-gray-400 border-gray-200'} text-center border p-1 rounded text-xs font-bold">${i*8+bit}<br>${val}</div>`;
+                    }
+                }
+                html += dataHtml + '</div>';
+            } 
+            else if (fc === 3 || fc === 4) { // Read Registers (Standard List Format)
+                const bytes = frame[2];
+                const regs = bytes / 2;
+                html += `<div class="text-sm font-semibold mb-2">Read ${regs} registers:</div><ul class="list-disc pl-5 mt-1 space-y-1">`;
+                for (let i = 0; i < regs; i++) {
+                    const val = (frame[3 + i*2] << 8) | frame[4 + i*2];
+                    const hex = val.toString(16).toUpperCase().padStart(4,'0');
+                    html += `<li><span class="font-mono">Reg ${i}:</span> <b>${val}</b> <span class="text-gray-400 text-xs">(0x${hex})</span></li>`;
+                }
+                html += '</ul>';
+            } 
+            else if (fc === 5 || fc === 6 || fc === 15 || fc === 16) { // Write Responses
+                html += `<div class="mt-2 text-green-600 font-bold">Write Successful</div>`;
+                html += `<div class="text-xs text-gray-500">Echo: ${toHex(frame)}</div>`;
+            }
+
+            ui.display.innerHTML = html;
+        }
+
+        // --- Export Feature ---
+        function exportData() {
+            const type = ui.exportType.value;
+            let content = '';
+            let filename = '';
+
+            if (type === 'full') {
+                content = ui.log.textContent;
+                filename = 'modbus_full_log.txt';
+            } else {
+                content = ui.display.innerText;
+                filename = 'modbus_parsed_data.txt';
+            }
+
+            if (!content.trim() || content.includes('Waiting for response')) {
+                alert("Log is empty or no data to export.");
+                return;
+            }
+
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // --- Helpers ---
+        function toggleWriteInputs() {
+            const fc = parseInt(ui.fc.value);
+            const isRead = [1, 2, 3, 4].includes(fc);
+            ui.readSec.style.display = isRead ? 'grid' : 'none';
+            ui.writeSec.classList.toggle('hidden', isRead);
+            
+            document.getElementById('inputGroupCoil').classList.toggle('hidden', fc !== 5);
+            document.getElementById('inputGroupSingleReg').classList.toggle('hidden', fc !== 6);
+            document.getElementById('inputGroupMultiCoil').classList.toggle('hidden', fc !== 15);
+            document.getElementById('inputGroupMultiReg').classList.toggle('hidden', fc !== 16);
+            
+            ui.continuous.disabled = !isRead;
+            if (!isRead) ui.continuous.checked = false;
+        }
+
+        function setConnectedState(connected) {
+            ui.btnConnect.disabled = connected;
+            ui.btnDisconnect.disabled = !connected;
+            ui.btnSend.disabled = !connected;
+            ui.inputs.forEach(i => i.disabled = !connected);
+            ui.fc.disabled = !connected;
+            
+            ui.btnConnect.classList.toggle('btn-disabled', connected);
+            ui.btnDisconnect.classList.toggle('btn-disabled', !connected);
+            ui.btnSend.classList.toggle('btn-disabled', !connected);
+            
+            ui.statusInd.className = `w-4 h-4 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`;
+            ui.statusLbl.textContent = connected ? "Connected" : "Not Connected";
+            if(connected) toggleWriteInputs();
+        }
+
+        function log(msg) {
+            ui.log.textContent += `${msg}\n`;
+            requestAnimationFrame(() => {
+                ui.log.scrollTop = ui.log.scrollHeight;
+            });
+        }
+
+        function clearLogs() {
+            ui.log.textContent = '';
+            ui.display.innerHTML = '<p class="text-gray-400 italic">Waiting for response...</p>';
+        }
+
+        function toHex(buffer) {
+            return Array.from(buffer).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+        }
+
+        function calculateCRC(buffer) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < buffer.length; i++) {
+                crc ^= buffer[i];
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+                    else crc = crc >> 1;
+                }
+            }
+            return crc;
+        }
+    </script>
+</body>
+</html>
